@@ -342,13 +342,25 @@ class Trainer:
             # self.ds_train = build_dataloader(ds_train, split=ds_name, cfg=self.cfg.datasets, batch_size=self.cfg.datasets.batch_size)
             self.ds_train = build_dataloader(ds_train, split=ds_name, cfg=self.cfg.datasets, batch_size=self.cfg.datasets.batch_size)
 
+        # The val split is loaded even when we are only running inference, but inference never
+        # reads it: inference_generate_params/_mesh/_generate all set ds_name = 'test', and
+        # evaluate() -- the one function that touches self.ds_val -- is not on that path. A
+        # dataset preprocessed for inference alone has an empty val split, and LoadData then dies
+        # on KeyError: 'fullpose' before a single sequence is generated. Skip it in exactly that
+        # case; whenever val has data this behaves as before.
         ds_name = 'val'
         self.data_info[ds_name] = {}
-        ds_val = LoadData(self.cfg.datasets, split_name=ds_name)
-        self.data_info[ds_name]['frame_names'] = ds_val.frame_names
-        self.data_info[ds_name]['frame_sbjs'] = ds_val.frame_sbjs
-        self.data_info[ds_name]['frame_objs'] = ds_val.frame_objs
-        self.ds_val = build_dataloader(ds_val, split=ds_name, cfg=self.cfg.datasets, batch_size=self.cfg.datasets.batch_size)
+        _val_file = os.path.join(self.cfg.datasets.dataset_dir, ds_name, 'grasp_motion_data.npy')
+        _val_empty = (not os.path.exists(_val_file)) or os.path.getsize(_val_file) < 4096
+        if inference and _val_empty:
+            self.ds_val = None
+            print('[load_data] val split is empty -- skipped (inference reads the test split only).')
+        else:
+            ds_val = LoadData(self.cfg.datasets, split_name=ds_name)
+            self.data_info[ds_name]['frame_names'] = ds_val.frame_names
+            self.data_info[ds_name]['frame_sbjs'] = ds_val.frame_sbjs
+            self.data_info[ds_name]['frame_objs'] = ds_val.frame_objs
+            self.ds_val = build_dataloader(ds_val, split=ds_name, cfg=self.cfg.datasets, batch_size=self.cfg.datasets.batch_size)
 
         self.bps = ds_test.bps
         self.bps_torch = bps_torch()
@@ -1531,7 +1543,14 @@ class Trainer:
             
             
 
-            seq_name = 's' + self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].split('/s')[-1].replace('/', '_')
+            # Name the sequence from the last two PATH COMPONENTS (subject, sequence).
+            # The original split the full path on '/s' and kept the last piece: for an
+            # object whose name begins with 's' that also splits at '/scissors', so the
+            # subject was dropped and every subject's scissors_use_1 wrote to the same
+            # file -- 13 scissors sequences collapsed to 4. Also hits stapler, stamp,
+            # sphere*, stanfordbunny.
+            _fn_parts = self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].replace('\\', '/').split('/')
+            seq_name = _fn_parts[-2] + '_' + _fn_parts[-1]
             seq_name_ = seq_name[:np.where([not i.isdigit() for i in seq_name])[0][-1]]
             curr_sbj = seq_name_.split('_')[0]
             curr_obj = seq_name_.split('_')[1]
@@ -1742,7 +1761,14 @@ class Trainer:
         for batch_id, batch in enumerate(data):
             
 
-            seq_name = 's' + self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].split('/s')[-1].replace('/', '_')
+            # Name the sequence from the last two PATH COMPONENTS (subject, sequence).
+            # The original split the full path on '/s' and kept the last piece: for an
+            # object whose name begins with 's' that also splits at '/scissors', so the
+            # subject was dropped and every subject's scissors_use_1 wrote to the same
+            # file -- 13 scissors sequences collapsed to 4. Also hits stapler, stamp,
+            # sphere*, stanfordbunny.
+            _fn_parts = self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].replace('\\', '/').split('/')
+            seq_name = _fn_parts[-2] + '_' + _fn_parts[-1]
             seq_name_ = seq_name[:np.where([not i.isdigit() for i in seq_name])[0][-1]]
             curr_sbj = seq_name_.split('_')[0]
             curr_obj = seq_name_.split('_')[1]
@@ -1858,7 +1884,14 @@ class Trainer:
             
             counter += 1
 
-            seq_name = 's' + self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].split('/s')[-1].replace('/', '_')
+            # Name the sequence from the last two PATH COMPONENTS (subject, sequence).
+            # The original split the full path on '/s' and kept the last piece: for an
+            # object whose name begins with 's' that also splits at '/scissors', so the
+            # subject was dropped and every subject's scissors_use_1 wrote to the same
+            # file -- 13 scissors sequences collapsed to 4. Also hits stapler, stamp,
+            # sphere*, stanfordbunny.
+            _fn_parts = self.data_info[ds_name]['frame_names'][batch['idx'][:,curr_i].to(torch.long)].replace('\\', '/').split('/')
+            seq_name = _fn_parts[-2] + '_' + _fn_parts[-1]
             fid = int(seq_name.split('_')[-1])
             seq_name_ = '_'.join(seq_name.split('_')[:-1])
             curr_sbj = seq_name_.split('_')[0]

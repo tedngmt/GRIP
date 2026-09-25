@@ -89,6 +89,16 @@ class MNetDataSet(object):
 
         self.all_seqs = glob.glob(os.path.join(self.grab_path, 'grab/*/*.npz'))
 
+        # Restrict preprocessing to a few objects. Without this every object that is not in
+        # test/val falls through to 'train' (see process_sequences), so preprocessing GRAB to
+        # run inference on a handful of objects would build a ~1100-sequence train split that
+        # is then never used. Unset -> unchanged behaviour.
+        _only = os.environ.get('GRIP_ONLY_OBJECTS', '').strip()
+        if _only:
+            _keep = {o.strip() for o in _only.split(',') if o.strip()}
+            self.all_seqs = [q for q in self.all_seqs
+                             if os.path.basename(q).split('_')[0] in _keep]
+
         ### to be filled 
         self.selected_seqs = []
         self.obj_based_seqs = {}
@@ -764,14 +774,15 @@ if __name__ == '__main__':
     model_path = cmd_args.smplx_path
 
     # exp_id = 'V05_multi_both_12_with_ids_arm_ICCV'
-    exp_id = 'Data_GRIP_00'
+    exp_id = os.environ.get('GRIP_EXP_ID', 'Data_GRIP_00')
 
 
     out_path = os.path.join(cmd_args.out_path, exp_id)
     makepath(out_path)
 
     # split the dataset based on the objects
-    grab_splits = {'test': ['mug', 'camera', 'binoculars', 'apple', 'toothpaste'],
+    _test = os.environ.get('GRIP_TEST_OBJECTS', 'mug,camera,binoculars,apple,toothpaste')
+    grab_splits = {'test': [o.strip() for o in _test.split(',') if o.strip()],
                    'val': ['fryingpan', 'toothbrush', 'elephant', 'hand'],
                    'train': []}
 
